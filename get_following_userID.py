@@ -1,10 +1,16 @@
 from pixivpy3 import *
-import json
 from time import sleep
-import sys, io, re, os
-import ulid
 from robobrowser import RoboBrowser
 from bs4 import BeautifulSoup
+import MySQLdb, json, ulid, sys, io, re, os
+
+connection = MySQLdb.connect(
+    host='localhost',
+    user='root',
+    db='pixiv_image_collect',
+    # passeord='',
+    charset='utf8'
+)
 
 f = open("client.json", "r")
 client_info = json.load(f)
@@ -46,7 +52,7 @@ browser.submit_form(form)
 target_url = 'https://www.pixiv.net/bookmark.php?type=user&rest=show&p='
 
 # 全てのフォローユーザーのユーザIDを取得
-following_users_id = [5476137]
+following_users_id = [784963, 444675]
 
 print(following_users_id)
 
@@ -77,6 +83,18 @@ for user_id in following_users_id:
     saving_direcory_path += str(user_id)
     print(saving_direcory_path)
 
+    user_cursor = connection.cursor()
+    user_cursor.execute(
+        "INSERT INTO user (user_id, user_name, account_name, saving_direcory) VALUES (%s, %s, %s, %s)",
+        (
+            user_id,
+            user_info_json.user.name,
+            user_info_json.user.account,
+            saving_direcory_path
+        )
+    )
+    # connection.commit()
+
     # ダウンロード
     # enumerate()を使うことでi:インデックス work_info:要素 でループ
     for i, work_info in enumerate(works_info.response):
@@ -92,13 +110,61 @@ for user_id in following_users_id:
         print("Title: %s" % work_title)
         print("URL: %s" % work_info.image_urls.large)
         print("Caption: %s" % work_info.caption)
+        print("Views_count: %s" % work_info.stats.views_count)
+        print("Favorited_count: %s" % str(work_info.stats.favorited_count.public + work_info.stats.favorited_count.private))
         print(work_info.tags)
         print(separator)
 
-        # 漫画の場合
         if not "manga" if work_info.is_manga else "illust":
         # # イラストの場合
-            aapi.download(work_info.image_urls.large, path=saving_direcory_path, name=str(ulid.new())+".jpg")
-            sleep(1)
+            illust_name = str(ulid.new())+".jpg"
+            aapi.download(work_info.image_urls.large, path=saving_direcory_path, name=illust_name)
+
+            illust_cursor = connection.cursor()
+            illust_cursor.execute(
+                "INSERT INTO illust (illust_id, user_id, title, url, caption, illust_name, views_count, favorited_count, create_date, update_date)" +
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                [
+                    work_info.id,
+                    user_id,
+                    work_title,
+                    work_info.image_urls.large,
+                    work_info.caption,
+                    illust_name,
+                    work_info.stats.views_count,
+                    work_info.stats.favorited_count.public + work_info.stats.favorited_count.private,
+                    work_info.created_time,
+                    work_info.reuploaded_time
+                ]
+            )
+            for tag_item in work_info.tags:
+                tag_check_cursor = connection.cursor()
+                tag_check_cursor.execute("SELECT tag_id FROM tag WHERE tag_name=%s", [tag_item])
+
+                tag_id = tag_check_cursor.fetchone()
+                if tag_id is None:
+                    tag_id = str(ulid.new())
+                    illust_cursor.execute(
+                        "INSERT INTO tag (tag_id, tag_name) VALUES (%s, %s)",
+                        (
+                            tag_id,
+                            tag_item
+                        )
+                    )
+                    print("tag1_f：", tag_id)
+                else:
+                    print("tag1_t：", tag_id)
+
+                print("tag2：", tag_id)
+                illust_cursor.execute(
+                    "INSERT INTO illust_tag (illust_id, tag_id) VALUES (%s, %s)",
+                    (
+                        work_info.id,
+                        tag_id
+                    )
+                )
+            sleep(2)
+connection.commit()
+
 
 print("\nThat\'s all.")
