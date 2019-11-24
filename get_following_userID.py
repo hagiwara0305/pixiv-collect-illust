@@ -2,7 +2,7 @@ from pixivpy3 import *
 from time import sleep
 from robobrowser import RoboBrowser
 from bs4 import BeautifulSoup
-import MySQLdb, json, ulid, sys, io, re, os
+import MySQLdb, json, ulid, sys, io, re, os, sys
 
 connection = MySQLdb.connect(
     host='localhost',
@@ -52,7 +52,7 @@ browser.submit_form(form)
 target_url = 'https://www.pixiv.net/bookmark.php?type=user&rest=show&p='
 
 # 全てのフォローユーザーのユーザIDを取得
-following_users_id = [784963, 444675]
+following_users_id = [4935]
 
 print(following_users_id)
 
@@ -95,9 +95,9 @@ for user_id in following_users_id:
     )
     # connection.commit()
 
-    # ダウンロード
     # enumerate()を使うことでi:インデックス work_info:要素 でループ
     for i, work_info in enumerate(works_info.response):
+        print(work_info)
 
         # 18禁はダメ
         if 'R-18' in work_info.tags:
@@ -115,56 +115,56 @@ for user_id in following_users_id:
         print(work_info.tags)
         print(separator)
 
-        if not "manga" if work_info.is_manga else "illust":
-        # # イラストの場合
-            illust_name = str(ulid.new())+".jpg"
-            aapi.download(work_info.image_urls.large, path=saving_direcory_path, name=illust_name)
+        try:
+            # 漫画以外のイラストデータを取得する
+            if not "manga" if work_info.is_manga else "illust":
+                # イラストの場合
+                illust_name = str(ulid.new())+".jpg"
 
-            illust_cursor = connection.cursor()
-            illust_cursor.execute(
-                "INSERT INTO illust (illust_id, user_id, title, url, caption, illust_name, views_count, favorited_count, create_date, update_date)" +
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                [
-                    work_info.id,
-                    user_id,
-                    work_title,
-                    work_info.image_urls.large,
-                    work_info.caption,
-                    illust_name,
-                    work_info.stats.views_count,
-                    work_info.stats.favorited_count.public + work_info.stats.favorited_count.private,
-                    work_info.created_time,
-                    work_info.reuploaded_time
-                ]
-            )
-            for tag_item in work_info.tags:
-                tag_check_cursor = connection.cursor()
-                tag_check_cursor.execute("SELECT tag_id FROM tag WHERE tag_name=%s", [tag_item])
+                illust_cursor = connection.cursor()
+                illust_cursor.execute(
+                    "INSERT INTO illust (illust_id, user_id, title, url, caption, illust_name, views_count, favorited_count, create_date, update_date)" +
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    [
+                        work_info.id,
+                        user_id,
+                        work_title,
+                        work_info.image_urls.large,
+                        work_info.caption,
+                        illust_name,
+                        work_info.stats.views_count,
+                        work_info.stats.favorited_count.public + work_info.stats.favorited_count.private,
+                        work_info.created_time,
+                        work_info.reuploaded_time
+                    ]
+                )
+                # tagの確認
+                for tag_item in work_info.tags:
+                    tag_check_cursor = connection.cursor()
+                    tag_check_cursor.execute("SELECT tag_id FROM tag WHERE tag_name=%s", [tag_item])
 
-                tag_id = tag_check_cursor.fetchone()
-                if tag_id is None:
-                    tag_id = str(ulid.new())
+                    tag_id = tag_check_cursor.fetchone()
+                    if tag_id is None:
+                        tag_id = str(ulid.new())
+                        illust_cursor.execute(
+                            "INSERT INTO tag (tag_id, tag_name) VALUES (%s, %s)",
+                            (
+                                tag_id,
+                                tag_item
+                            )
+                        )
+
                     illust_cursor.execute(
-                        "INSERT INTO tag (tag_id, tag_name) VALUES (%s, %s)",
+                        "INSERT INTO illust_tag (illust_id, tag_id) VALUES (%s, %s)",
                         (
-                            tag_id,
-                            tag_item
+                            work_info.id,
+                            tag_id
                         )
                     )
-                    print("tag1_f：", tag_id)
-                else:
-                    print("tag1_t：", tag_id)
-
-                print("tag2：", tag_id)
-                illust_cursor.execute(
-                    "INSERT INTO illust_tag (illust_id, tag_id) VALUES (%s, %s)",
-                    (
-                        work_info.id,
-                        tag_id
-                    )
-                )
-            sleep(2)
-connection.commit()
-
+                aapi.download(work_info.image_urls.large, path=saving_direcory_path, name=illust_name)
+                connection.commit()
+                sleep(2)
+        except MySQLdb._exceptions.IntegrityError:
+            print("uniqueが被りました...")
 
 print("\nThat\'s all.")
