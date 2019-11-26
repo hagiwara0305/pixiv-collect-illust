@@ -52,6 +52,7 @@ browser.submit_form(form)
 target_url = 'https://www.pixiv.net/bookmark.php?type=user&rest=show&p='
 
 # 全てのフォローユーザーのユーザIDを取得
+# 4935
 following_users_id = [4935]
 
 print(following_users_id)
@@ -81,7 +82,6 @@ for user_id in following_users_id:
         os.mkdir(saving_direcory_path + str(user_id))
 
     saving_direcory_path += str(user_id)
-    print(saving_direcory_path)
 
     user_cursor = connection.cursor()
     user_cursor.execute(
@@ -98,7 +98,6 @@ for user_id in following_users_id:
     # enumerate()を使うことでi:インデックス work_info:要素 でループ
     for i, work_info in enumerate(works_info.response):
         print(work_info)
-
         # 18禁はダメ
         if 'R-18' in work_info.tags:
           continue
@@ -114,9 +113,9 @@ for user_id in following_users_id:
         print("Favorited_count: %s" % str(work_info.stats.favorited_count.public + work_info.stats.favorited_count.private))
         print(work_info.tags)
 
+        illust_cursor = connection.cursor()
+        # tagの確認
         try:
-            illust_cursor = connection.cursor()
-            # tagの確認
             for tag_item in work_info.tags:
                 tag_check_cursor = connection.cursor()
                 tag_check_cursor.execute("SELECT tag_id FROM tag WHERE tag_name=%s", [tag_item])
@@ -148,49 +147,39 @@ for user_id in following_users_id:
                 manga_info = api.works(work_info.id)
                 for page_no in range(0, manga_info.response[0].page_count):
                     illust_name = str(ulid.new()) + '_' + str(page_no) + ".jpg"
-                    illust_cursor.execute(
-                        "INSERT INTO illust (illust_id, user_id, title, url, caption, illust_name, views_count, favorited_count, create_date, update_date)" +
-                            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                        [
-                            str(work_info.id) + '_' + str(page_no),
-                            user_id,
-                            work_title,
-                            work_info.image_urls.large,
-                            work_info.caption,
-                            illust_name,
-                            work_info.stats.views_count,
-                            work_info.stats.favorited_count.public + work_info.stats.favorited_count.private,
-                            work_info.created_time,
-                            work_info.reuploaded_time
-                        ]
-                    )
                     page_info = manga_info.response[0].metadata.pages[page_no]
                     aapi.download(page_info.image_urls.large, path=saving_direcory_path + '/' + str(work_info.id), name=illust_name)
-                    # sleep(1)
+                illust_name = str(ulid.new()) + '_0jpg'
             else:
                 # イラスト
-                    illust_name = str(ulid.new()) + ".jpg"
-                    illust_cursor.execute(
-                        "INSERT INTO illust (illust_id, user_id, title, url, caption, illust_name, views_count, favorited_count, create_date, update_date)" +
-                            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                        [
-                            work_info.id,
-                            user_id,
-                            work_title,
-                            work_info.image_urls.large,
-                            work_info.caption,
-                            illust_name,
-                            work_info.stats.views_count,
-                            work_info.stats.favorited_count.public + work_info.stats.favorited_count.private,
-                            work_info.created_time,
-                            work_info.reuploaded_time
-                        ]
-                    )
-                    aapi.download(work_info.image_urls.large, path=saving_direcory_path, name=illust_name)
+                illust_name = str(ulid.new()) + ".jpg"
+                aapi.download(work_info.image_urls.large, path=saving_direcory_path, name=illust_name)
+
+            illust_cursor.execute(
+                    "INSERT INTO illust (illust_id, user_id, title, url, caption, illust_name, views_count, favorited_count, create_date, update_date, page_count)" +
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    [
+                        work_info.id,
+                        user_id,
+                        work_title,
+                        work_info.image_urls.large,
+                        work_info.caption,
+                        str(ulid.new()),
+                        work_info.stats.views_count,
+                        work_info.stats.favorited_count.public + work_info.stats.favorited_count.private,
+                        work_info.created_time,
+                        work_info.reuploaded_time,
+                        work_info.page_count
+                    ]
+                )
             connection.commit()
             sleep(1)
         except MySQLdb._exceptions.IntegrityError:
+            connection.rollback()
             print("uniqueが被りました...")
+        except PixivError:
+            connection.rollback()
+            print("見つかりませんでした...")
 
 print("\nThat\'s all.")
 
