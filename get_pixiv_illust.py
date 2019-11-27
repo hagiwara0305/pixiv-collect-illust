@@ -53,7 +53,8 @@ target_url = 'https://www.pixiv.net/bookmark.php?type=user&rest=show&p='
 
 # 全てのフォローユーザーのユーザIDを取得
 # 4935
-following_users_id = [4935]
+del sys.argv[0]
+following_users_id = sys.argv
 
 print(following_users_id)
 
@@ -80,6 +81,9 @@ for user_id in following_users_id:
     saving_direcory_path = "./pixiv_images/"
     if not os.path.exists(saving_direcory_path + str(user_id)):
         os.mkdir(saving_direcory_path + str(user_id))
+    else :
+        print('既に登録しているユーザです')
+        continue
 
     saving_direcory_path += str(user_id)
 
@@ -97,7 +101,6 @@ for user_id in following_users_id:
 
     # enumerate()を使うことでi:インデックス work_info:要素 でループ
     for i, work_info in enumerate(works_info.response):
-        print(work_info)
         # 18禁はダメ
         if 'R-18' in work_info.tags:
           continue
@@ -145,15 +148,14 @@ for user_id in following_users_id:
                     os.mkdir(saving_direcory_path + '/' + str(work_info.id))
 
                 manga_info = api.works(work_info.id)
+                illust_name = str(ulid.new())
                 for page_no in range(0, manga_info.response[0].page_count):
-                    illust_name = str(ulid.new()) + '_' + str(page_no) + ".jpg"
                     page_info = manga_info.response[0].metadata.pages[page_no]
-                    aapi.download(page_info.image_urls.large, path=saving_direcory_path + '/' + str(work_info.id), name=illust_name)
-                illust_name = str(ulid.new()) + '_0jpg'
+                    aapi.download(page_info.image_urls.large, path=saving_direcory_path + '/' + str(work_info.id), name=illust_name + '_' + str(page_no) + ".jpg")
             else:
                 # イラスト
-                illust_name = str(ulid.new()) + ".jpg"
-                aapi.download(work_info.image_urls.large, path=saving_direcory_path, name=illust_name)
+                illust_name = str(ulid.new())
+                aapi.download(work_info.image_urls.large, path=saving_direcory_path, name=illust_name + ".jpg")
 
             illust_cursor.execute(
                     "INSERT INTO illust (illust_id, user_id, title, url, caption, illust_name, views_count, favorited_count, create_date, update_date, page_count)" +
@@ -164,7 +166,7 @@ for user_id in following_users_id:
                         work_title,
                         work_info.image_urls.large,
                         work_info.caption,
-                        str(ulid.new()),
+                        illust_name,
                         work_info.stats.views_count,
                         work_info.stats.favorited_count.public + work_info.stats.favorited_count.private,
                         work_info.created_time,
